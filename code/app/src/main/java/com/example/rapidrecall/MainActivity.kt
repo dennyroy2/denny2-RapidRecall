@@ -43,11 +43,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import kotlin.time.Duration.Companion.milliseconds
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.BiasAlignment
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +74,7 @@ enum class Screen {
 
 @Composable
 fun RapidRecallApp() {
-    var currentScreen by rememberSaveable() { mutableStateOf(Screen.INIT) }
+    var currentScreen by rememberSaveable { mutableStateOf(Screen.INIT) }
     val attempts = remember { mutableStateListOf<Attempt>() }
     val goBack = { currentScreen = Screen.INIT}
 
@@ -88,29 +93,31 @@ fun RapidRecallApp() {
 fun StartScreen(
     onNavigate: (Screen) -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    )
-    {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text("Rapid Recall")
-        }
-        StartScreenButton("Start", onClick = {onNavigate(Screen.START)})
-        StartScreenButton("Log", onClick = {onNavigate(Screen.LOG)})
-        StartScreenButton("Summary", onClick = {onNavigate(Screen.SUMMARY)})
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(16.dp)
+    ){
+        Text("Rapid Recall",
+            fontWeight = FontWeight.Bold,
+            fontSize = 42.sp,
+            modifier = Modifier.align(BiasAlignment(horizontalBias = 0f, verticalBias = -0.6f)))
 
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text("Name: Denny Roy | CCID: denny2")
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        )
+        {
+            StartScreenButton("Start", onClick = { onNavigate(Screen.START) })
+            StartScreenButton("Log", onClick = { onNavigate(Screen.LOG) })
+            StartScreenButton("Summary", onClick = { onNavigate(Screen.SUMMARY) })
         }
+        Text("Name: Denny Roy | CCID: denny2",
+            modifier = Modifier.align(Alignment.BottomCenter))
     }
+
 }
 
 @Composable
@@ -154,7 +161,8 @@ fun RowScope.TableCell(
                 .weight(weight)
                 .padding(vertical = 12.dp, horizontal = 8.dp),
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            fontSize = 13.sp
         )
     }
 
@@ -213,43 +221,48 @@ fun GameScreen(
             }
 
             GameScreenPhase.INPUT -> {
-                Text("Enter the Sequence:")
-                OutlinedTextField(
-                    value = guess,
-                    onValueChange = { newText ->
-                        if (newText.length <= length) {
-                            guess = newText
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                Button (
-                    onClick = {
-                        val curAttempt = Attempt(sequence, guess)
-                        onAttemptSubmitted(curAttempt)
-                        newAttempt = true
-                        guess = ""
-                        if (curAttempt.isCorrect()) {
-                            text = "Correct guess!"
-                        } else {
-                            text = "Incorrect guess."
-                        }
-                    },
-                    enabled = guess.length == length
-                ) {
-                    Text("Submit")
+                if (!newAttempt){
+                    Text("Enter the Sequence:")
+                    OutlinedTextField(
+                        value = guess,
+                        onValueChange = { newText ->
+                            if (newText.length <= length) {
+                                guess = newText
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    Button(
+                        onClick = {
+                            val curAttempt = Attempt(sequence, guess)
+                            onAttemptSubmitted(curAttempt)
+                            newAttempt = true
+                            text = if (curAttempt.isCorrect()) {
+                                "Correct guess!"
+                            } else {
+                                "Incorrect guess."
+                            }
+                        },
+                        enabled = guess.length == length
+                    ) {
+                        Text("Submit")
+                    }
                 }
                 if (text.isNotEmpty()) {
-                    LaunchedEffect(text){
-                        delay(2000.milliseconds)
-                        text = ""
-                    }
                     Text(text)
+                    Text("Correct sequence: $sequence")
+                    Text("Your sequence: $guess")
                 }
 
                 if (newAttempt) {
                     Button(
-                        onClick = {phase = GameScreenPhase.SETUP}
+                        onClick = {
+                            phase = GameScreenPhase.SETUP
+                            guess = ""
+                            text = ""
+                            newAttempt = false
+                        }
+
                     ) {
                         Text("New Attempt")
                     }
@@ -270,6 +283,8 @@ fun LogScreen(
 ) {
     BackHandler { onBack() }
 
+    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -285,18 +300,19 @@ fun LogScreen(
                 TableCell("Correct", 1.5f, true)
                 TableCell("Input", 1.5f, true)
                 TableCell("Result", 1.5f, true)
-                TableCell("Length", 1.5f, true)
+                TableCell("Time", 1.5f, true)
             }
             LazyColumn {
                 itemsIndexed(attempts) {index, attempt ->
                     val rowColor = if (index % 2 == 0) Color.Transparent else
                         MaterialTheme.colorScheme.surfaceVariant
+                    val time = formatter.format(Date(attempt.timestamp))
                     Row(modifier =Modifier.background(rowColor)) {
                         TableCell("${index+1}", 0.5f)
                         TableCell(attempt.getCorrectSeq(), 1.5f)
                         TableCell(attempt.getUserSeq(), 1.5f)
                         TableCell("${attempt.isCorrect()}", 1.25f)
-                        TableCell("${attempt.getUserSeq().length}", 1.25f)
+                        TableCell("$time", 1.5f)
 
                     }
 
@@ -312,29 +328,16 @@ fun SummaryScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
-    var correct = 0
-    var largestCorrectlyGuessed = 0
-    var largestSeq = ""
+    val curSummary = Summary(attempts)
+    curSummary.calculate()
     var index = 0
-
-    for (attempt in attempts) {
-        if (attempt.isCorrect()) {
-            correct += 1
-            if (attempt.getCorrectSeq().length > largestCorrectlyGuessed) {
-                largestCorrectlyGuessed = attempt.getCorrectSeq().length
-                largestSeq = attempt.getCorrectSeq()
-            }
-        }
-    }
-
-    val winRate = if (attempts.isNotEmpty()) (correct.toFloat()/attempts.size) else 0
 
     val rows = linkedMapOf(
         "Attempts" to attempts.size,
-        "Correct" to correct,
-        "Win Rate" to winRate,
-        "Largest Correct Sequence" to largestSeq,
-        "Size" to largestCorrectlyGuessed)
+        "Correct" to curSummary.correct,
+        "Win Rate" to curSummary.winRate(),
+        "Largest Correct Sequence" to curSummary.largestSeq,
+        "Size" to curSummary.largestCorrectlyGuessed)
 
     Column(
         modifier = Modifier
@@ -347,11 +350,13 @@ fun SummaryScreen(
             index += 1
             val rowColor = if (index % 2 == 0) Color.Transparent else
                 MaterialTheme.colorScheme.surfaceVariant
-            Row(modifier = Modifier.fillMaxWidth()
+            Row(modifier = Modifier
+                .fillMaxWidth()
                 .background(rowColor)
             ) {
                 TableCell(row, 1.5f, true)
                 TableCell("${rows[row]}", 1.5f)
+
             }
         }
     }
