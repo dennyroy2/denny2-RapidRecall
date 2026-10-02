@@ -27,22 +27,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.setValue
 import kotlin.math.roundToInt
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.text.input.KeyboardType
-import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.font.FontWeight
@@ -53,15 +45,18 @@ import java.text.SimpleDateFormat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.BiasAlignment
+import com.example.rapidrecall.ui.theme.GameViewModel
+import androidx.activity.viewModels
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: GameViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             RapidRecallTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    RapidRecallApp()
+                    RapidRecallApp(viewModel)
                 }
             }
         }
@@ -73,19 +68,13 @@ enum class Screen {
 }
 
 @Composable
-fun RapidRecallApp() {
-    var currentScreen by rememberSaveable { mutableStateOf(Screen.INIT) }
-    val attempts = remember { mutableStateListOf<Attempt>() }
-    val goBack = { currentScreen = Screen.INIT}
+fun RapidRecallApp(viewModel: GameViewModel) {
 
-    when (currentScreen) {
-        Screen.INIT -> StartScreen(onNavigate = { newScreen -> currentScreen = newScreen })
-        Screen.START -> GameScreen(
-            onAttemptSubmitted = {attempts.add(it)},
-            onBack = goBack
-        )
-        Screen.LOG -> LogScreen(attempts, onBack = goBack)
-        Screen.SUMMARY -> SummaryScreen(attempts, onBack = goBack)
+    when (viewModel.currentScreen) {
+        Screen.INIT -> StartScreen(onNavigate = { newScreen -> viewModel.changeScreen(newScreen) })
+        Screen.START -> GameScreen(viewModel)
+        Screen.LOG -> LogScreen(viewModel)
+        Screen.SUMMARY -> SummaryScreen(viewModel)
     }
 
 }
@@ -146,7 +135,7 @@ fun StartScreenButton(
 }
 
 enum class GameScreenPhase {
-    SETUP, SEQUENCE, INPUT
+    SETUP, SEQUENCE, INPUT, FEEDBACK
 }
 
 @Composable
@@ -169,105 +158,29 @@ fun RowScope.TableCell(
 
 @Composable
 fun GameScreen(
-    onAttemptSubmitted: (Attempt) -> Unit,
-    onBack: () -> Unit
+    viewModel: GameViewModel
 ) {
-
-    var length by remember { mutableIntStateOf(5)}
-    val rand = RandomGenerator()
-    var sequence by remember { mutableStateOf("") }
-    var phase by remember {mutableStateOf(GameScreenPhase.SETUP)}
-    var guess by remember {mutableStateOf("")}
-    var currentDigit by remember {mutableStateOf("")}
-    var text by remember { mutableStateOf("") }
-    var newAttempt by remember { mutableStateOf(false)}
 
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        BackHandler { onBack() }
-        when (phase) {
-            GameScreenPhase.SETUP ->{
-                Text("Sequence Length: $length")
-                Slider(
-                    value = length.toFloat(),
-                    onValueChange = { length = it.roundToInt() },
-                    valueRange = 1f..10f,
-                    steps = 8,
-                    modifier = Modifier.padding(20.dp)
-                )
+        BackHandler { viewModel.goBack() }
+        when (viewModel.phase) {
+            GameScreenPhase.SETUP -> GameScreenSetup(
+                length = viewModel.length,
+                onLengthChange = { viewModel.updateLength(it) },
+                onStart = { viewModel.startRound() }
+            )
+            GameScreenPhase.SEQUENCE -> GameScreenSequence(currentDigit = viewModel.currentDigit)
 
-                Button(
-                    onClick = {
-                        sequence = rand.getRandomSequence(length)
-                        phase = GameScreenPhase.SEQUENCE}
-                ) {
-                    Text("GENERATE SEQUENCE")
-                }
-            }
-            GameScreenPhase.SEQUENCE -> {
-                LaunchedEffect(sequence) {
-                    for (char in sequence) {
-                        currentDigit = char.toString()
-                        delay(1000.milliseconds)
-                        currentDigit = ""
-                        delay(250.milliseconds)
-                    }
-                    phase = GameScreenPhase.INPUT
-                }
-                Text(currentDigit, fontSize = 96.sp)
-            }
+            GameScreenPhase.INPUT -> GameScreenInput(viewModel.guess,
+                { viewModel.updateGuess(it) },
+                {viewModel.submitGuess()})
 
-            GameScreenPhase.INPUT -> {
-                if (!newAttempt){
-                    Text("Enter the Sequence:")
-                    OutlinedTextField(
-                        value = guess,
-                        onValueChange = { newText ->
-                            if (newText.length <= length) {
-                                guess = newText
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                    Button(
-                        onClick = {
-                            val curAttempt = Attempt(sequence, guess)
-                            onAttemptSubmitted(curAttempt)
-                            newAttempt = true
-                            text = if (curAttempt.isCorrect()) {
-                                "Correct guess!"
-                            } else {
-                                "Incorrect guess."
-                            }
-                        },
-                        enabled = guess.length == length
-                    ) {
-                        Text("Submit")
-                    }
-                }
-                if (text.isNotEmpty()) {
-                    Text(text)
-                    Text("Correct sequence: $sequence")
-                    Text("Your sequence: $guess")
-                }
-
-                if (newAttempt) {
-                    Button(
-                        onClick = {
-                            phase = GameScreenPhase.SETUP
-                            guess = ""
-                            text = ""
-                            newAttempt = false
-                        }
-
-                    ) {
-                        Text("New Attempt")
-                    }
-                }
-            }
+            GameScreenPhase.FEEDBACK -> GameScreenFeedback(viewModel.sequence, viewModel.guess
+            ) { viewModel.resetRound() }
 
         }
 
@@ -277,11 +190,77 @@ fun GameScreen(
 }
 
 @Composable
-fun LogScreen(
-    attempts: List<Attempt>,
-    onBack: () -> Unit
+fun GameScreenFeedback(
+    sequence: String,
+    guess: String,
+    reset: () -> Unit
 ) {
-    BackHandler { onBack() }
+    var text: String
+    text = if (sequence == guess) {
+        "Correct answer!"
+    } else {
+        "Incorrect answer."
+    }
+
+    Text(text)
+    Text("Correct sequence: $sequence")
+    Text("Your sequence: $guess")
+    Button (
+        onClick = {reset()}
+    ) {
+        Text("New Attempt")
+    }
+}
+@Composable
+fun GameScreenInput(
+    guess: String,
+    updateGuess: (String) -> Unit,
+    submitGuess: () -> Unit
+) {
+    Text("Enter the sequence:")
+    OutlinedTextField(
+        value = guess,
+        onValueChange = { newText ->
+            updateGuess(newText) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
+    Button(
+        onClick = { submitGuess() }
+    ) {
+        Text("Submit")
+    }
+}
+@Composable
+fun GameScreenSequence(currentDigit: String) {
+    Text(currentDigit, fontSize = 96.sp)
+}
+
+@Composable
+fun GameScreenSetup(
+    length: Int,
+    onLengthChange: (Int) -> Unit,
+    onStart: () -> Unit
+) {
+        Text("Sequence Length: $length")
+        Slider(
+            value = length.toFloat(),
+            onValueChange = { onLengthChange(it.roundToInt()) },
+            valueRange = 1f..10f,
+            steps = 8,
+            modifier = Modifier.padding(20.dp)
+        )
+        Button(
+            onClick = onStart
+        ) {
+            Text("GENERATE SEQUENCE")
+        }
+}
+
+@Composable
+fun LogScreen(
+    viewModel: GameViewModel
+) {
+    BackHandler { viewModel.goBack() }
 
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -292,7 +271,7 @@ fun LogScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (attempts.isEmpty()) {
+        if (viewModel.attempts.isEmpty()) {
             Text("No attempts yet.")
         } else {
             Row(Modifier.background(MaterialTheme.colorScheme.primary)) {
@@ -303,7 +282,7 @@ fun LogScreen(
                 TableCell("Time", 1.5f, true)
             }
             LazyColumn {
-                itemsIndexed(attempts) {index, attempt ->
+                itemsIndexed(viewModel.attempts) {index, attempt ->
                     val rowColor = if (index % 2 == 0) Color.Transparent else
                         MaterialTheme.colorScheme.surfaceVariant
                     val time = formatter.format(Date(attempt.timestamp))
@@ -324,20 +303,12 @@ fun LogScreen(
 
 @Composable
 fun SummaryScreen(
-    attempts: List<Attempt>,
-    onBack: () -> Unit
+    viewModel: GameViewModel,
 ) {
-    BackHandler { onBack() }
-    val curSummary = Summary(attempts)
-    curSummary.calculate()
+    BackHandler { viewModel.goBack() }
     var index = 0
 
-    val rows = linkedMapOf(
-        "Attempts" to attempts.size,
-        "Correct" to curSummary.correct,
-        "Win Rate" to curSummary.winRate(),
-        "Largest Correct Sequence" to curSummary.largestSeq,
-        "Size" to curSummary.largestCorrectlyGuessed)
+    val rows = viewModel.getSummaryRows()
 
     Column(
         modifier = Modifier
