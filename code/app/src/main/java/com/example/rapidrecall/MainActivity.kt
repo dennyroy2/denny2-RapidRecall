@@ -10,7 +10,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -47,6 +46,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.BiasAlignment
 import com.example.rapidrecall.ui.theme.GameViewModel
 import androidx.activity.viewModels
+import androidx.compose.material3.Surface
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GameViewModel by viewModels()
@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             RapidRecallTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     RapidRecallApp(viewModel)
                 }
             }
@@ -195,8 +195,7 @@ fun GameScreenFeedback(
     guess: String,
     reset: () -> Unit
 ) {
-    var text: String
-    text = if (sequence == guess) {
+    val text: String = if (sequence == guess) {
         "Correct answer!"
     } else {
         "Incorrect answer."
